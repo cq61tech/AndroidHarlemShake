@@ -15,6 +15,8 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
@@ -28,12 +30,32 @@ private fun beatFreq(r: Random): Float {
     return f[r.nextInt(f.size)]
 }
 
-class Show(private val activity: Activity, private val onEnd: () -> Unit) {
+private fun locX(v: View): Int {
+    val a = IntArray(2)
+    v.getLocationOnScreen(a)
+    return a[0]
+}
+
+private fun smooth(x: Float): Float {
+    val c = min(1f, max(0f, x))
+    return c * c * (3f - 2f * c)
+}
+
+private fun tri(u: Float): Float {
+    val f = u - floor(u)
+    return 1f - abs(2f * f - 1f)
+}
+
+class Show(
+    private val activity: Activity,
+    private val nostalgic: Boolean,
+    private val onEnd: () -> Unit
+) {
 
     var active = false
         private set
 
-    private class Dancer(val view: View, r: Random) {
+    private class Dancer(val view: View, r: Random, sw: Int) {
         val baseX = view.translationX
         val baseY = view.translationY
         val baseRot = view.rotation
@@ -48,6 +70,7 @@ class Show(private val activity: Activity, private val onEnd: () -> Unit) {
         val arot = 25f + r.nextFloat() * 70f
         val asc = 0.25f + r.nextFloat() * 0.55f
         val flip = if (r.nextFloat() < 0.4f) 30f + r.nextFloat() * 50f else 0f
+        val f = beatFreq(r)
         val fx = beatFreq(r)
         val fy = beatFreq(r)
         val fr = beatFreq(r)
@@ -56,6 +79,12 @@ class Show(private val activity: Activity, private val onEnd: () -> Unit) {
         val py = r.nextFloat() * TAU
         val pr = r.nextFloat() * TAU
         val ps = r.nextFloat() * TAU
+        val dir = if (r.nextBoolean()) 1f else -1f
+        val sp = 0.5f + r.nextFloat()
+        val amp = (0.9f + r.nextFloat() * 1.6f) * h
+        val gapLeft = max(0, locX(view)).toFloat()
+        val gapRight = max(0f, sw - locX(view) - w)
+        var type = 0
     }
 
     private val decor = activity.window.decorView as ViewGroup
@@ -91,7 +120,7 @@ class Show(private val activity: Activity, private val onEnd: () -> Unit) {
         val pool = if (apps.isNotEmpty()) apps else list
         if (pool.isNotEmpty()) {
             val chosen = pool[random.nextInt(pool.size)]
-            solo = Dancer(chosen, random)
+            solo = Dancer(chosen, random, decor.width)
             unclip(chosen)
         }
         addOverlay()
@@ -215,13 +244,21 @@ class Show(private val activity: Activity, private val onEnd: () -> Unit) {
         }
         if (pos < Proto.DROP_MS) {
             val d = solo
-            if (d != null) applySolo(d, pos / 1000f)
+            if (d != null) {
+                if (nostalgic) applySoloNostalgic(d, pos / 1000f) else applySolo(d, pos / 1000f)
+            }
         } else {
             if (!dropped) beginCrazy()
             val t = (pos - Proto.DROP_MS) / 1000f
             val ramp = min(1f, t / 0.15f)
-            for (d in dancers) applyCrazy(d, t, ramp)
-            overlay?.alpha = min(1f, t / 0.5f) * 0.55f
+            if (nostalgic) {
+                for (d in dancers) applyNostalgic(d, t, ramp)
+                val phase = (t % 0.87f) / 0.87f
+                overlay?.alpha = if (phase < 0.45f) 0.75f else 0.1f
+            } else {
+                for (d in dancers) applyCrazy(d, t, ramp)
+                overlay?.alpha = min(1f, t / 0.5f) * 0.55f
+            }
         }
     }
 
@@ -232,11 +269,102 @@ class Show(private val activity: Activity, private val onEnd: () -> Unit) {
         val fresh = Targets.find(activity)
         val list = ArrayList<Dancer>()
         for (v in fresh) {
-            val d = if (old != null && old.view === v) old else Dancer(v, random)
+            val d = if (old != null && old.view === v) old else Dancer(v, random, decor.width)
             list.add(d)
             unclip(v)
         }
+        if (nostalgic) {
+            val head = listOf(0, 1, 2, 3, 4).shuffled(random)
+            val tail = listOf(5, 6, 7, 8, 9, 10).shuffled(random)
+            val order = head + tail
+            for (i in list.indices) {
+                list[i].type = order[i % order.size]
+            }
+        }
         dancers = list
+    }
+
+    private fun applySoloNostalgic(d: Dancer, t: Float) {
+        val u = t % 2f
+        var dx = 0f
+        var dy = 0f
+        if (u < 0.6f) {
+            dy = -sin(PI_F * u / 0.6f) * 0.4f * d.h
+        } else if (u < 1.3f) {
+            dx = sin(PI_F * (u - 0.6f) / 0.7f) * 0.5f * d.w
+        } else {
+            dx = -sin(PI_F * (u - 1.3f) / 0.7f) * 0.5f * d.w
+        }
+        val v = d.view
+        v.translationX = d.baseX + dx
+        v.translationY = d.baseY + dy
+    }
+
+    private fun applyNostalgic(d: Dancer, t: Float, ramp: Float) {
+        var dx = 0f
+        var dy = 0f
+        var rot = 0f
+        var sx = 1f
+        var sy = 1f
+        when (d.type) {
+            0 -> {
+                rot = d.dir * 360f * d.sp * t
+            }
+            1 -> {
+                val s = 0.25f + 2.95f * (0.5f + 0.5f * sin(TAU * d.sp * 0.8f * t + d.px))
+                sx = s
+                sy = s
+            }
+            2 -> {
+                dy = -d.amp * abs(sin(PI_F * d.f * t + d.px))
+            }
+            3 -> {
+                val edge = if (d.dir > 0f) d.gapRight else d.gapLeft
+                val dist = edge + d.w * 1.3f
+                val k = smooth(tri(t * 0.45f * d.sp + d.px / TAU))
+                dx = d.dir * dist * k
+                rot = d.dir * 14f * k
+            }
+            4 -> {
+                val om = TAU * 0.45f * d.sp
+                val radius = d.ax * 1.3f
+                dx = radius * sin(om * t + d.px)
+                dy = radius * 0.6f * sin(2f * om * t + d.px)
+                rot = 18f * cos(om * t + d.px)
+            }
+            5 -> {
+                dx = 0.12f * d.w * sin(TAU * 11f * t + d.px)
+                dy = 0.12f * d.h * sin(TAU * 13f * t + d.py)
+                rot = 12f * sin(TAU * 9f * t + d.pr)
+            }
+            6 -> {
+                val a = TAU * d.f * 0.5f * t + d.px
+                rot = 40f * sin(a)
+                dx = 0.25f * d.w * sin(a)
+            }
+            7 -> {
+                val a = TAU * d.f * 0.5f * t + d.px
+                sx = 1f + 0.8f * sin(a)
+                sy = 1f - 0.5f * sin(a)
+            }
+            8 -> {
+                dy = d.ay * 0.9f * sin(TAU * d.sp * 0.4f * t + d.py)
+            }
+            9 -> {
+                dx = d.ax * 0.8f * sin(TAU * d.sp * 0.5f * t + d.px)
+                rot = dx / (d.w * 0.5f) * 57.29578f
+            }
+            else -> {
+                dx = d.ax * (tri(t * 0.35f * d.sp + d.px / TAU) * 2f - 1f)
+                dy = d.ay * (tri(t * 0.27f * d.sp + d.py / TAU) * 2f - 1f)
+            }
+        }
+        val v = d.view
+        v.translationX = d.baseX + ramp * dx
+        v.translationY = d.baseY + ramp * dy
+        v.rotation = d.baseRot + ramp * rot
+        v.scaleX = d.baseSx * (1f + ramp * (sx - 1f))
+        v.scaleY = d.baseSy * (1f + ramp * (sy - 1f))
     }
 
     private fun applySolo(d: Dancer, t: Float) {

@@ -72,7 +72,8 @@ object Controller {
                     running.stop()
                     show = null
                 } else if (alive && activity != null) {
-                    val created = Show(activity) { show = null }
+                    val nostalgic = intent.getIntExtra(Proto.EXTRA_MODE, Proto.MODE_NOSTALGIC) == Proto.MODE_NOSTALGIC
+                    val created = Show(activity, nostalgic) { show = null }
                     show = created
                     created.start()
                 }

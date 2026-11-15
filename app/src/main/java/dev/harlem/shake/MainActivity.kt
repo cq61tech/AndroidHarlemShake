@@ -14,6 +14,8 @@ import android.os.Handler
 import android.os.Looper
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.RadioButton
+import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
 
@@ -43,6 +45,21 @@ class MainActivity : Activity() {
         status.textSize = 16f
         status.text = "LSPosed'da modülü etkinleştir, kapsamda Pixel Launcher'ı seç, sonra launcher'ı zorla durdur."
         root.addView(status)
+
+        val group = RadioGroup(this)
+        val nostalgicButton = RadioButton(this)
+        nostalgicButton.id = 102
+        nostalgicButton.text = "Nostalji: iOS 6 tarzı, her ikonun kendi dansı (2D)"
+        val modernButton = RadioButton(this)
+        modernButton.id = 101
+        modernButton.text = "Modern: 3D dönüşler ve ters yüz olmalar"
+        group.addView(nostalgicButton)
+        group.addView(modernButton)
+        group.check(if (Dispatch.savedMode(this) == Proto.MODE_MODERN) 101 else 102)
+        group.setOnCheckedChangeListener { _, checked ->
+            Dispatch.saveMode(this, if (checked == 101) Proto.MODE_MODERN else Proto.MODE_NOSTALGIC)
+        }
+        root.addView(group)
 
         root.addView(button("Ana ekrana kısayol ekle") { pinShortcut() })
         root.addView(button("Modülü kontrol et") { check() })
