@@ -29,8 +29,12 @@ class MainActivity : Activity() {
             answered = true
             val n = intent.getIntExtra(Proto.EXTRA_ICONS, -1)
             val who = intent.getStringExtra(Proto.EXTRA_PACKAGE) ?: ""
-            val detail = if (n > 0) "Ana ekranda $n simge bulundu." else "Simge sayımı için ana ekrandayken tekrar dene."
-            status.text = "Modül çalışıyor ($who). $detail"
+            val detail = if (n > 0) {
+                "Found $n icons on the home screen."
+            } else {
+                "Open the home screen and check again to count icons."
+            }
+            status.text = "Module is active ($who). $detail"
         }
     }
 
@@ -43,16 +47,16 @@ class MainActivity : Activity() {
 
         status = TextView(this)
         status.textSize = 16f
-        status.text = "LSPosed'da modülü etkinleştir, kapsamda Pixel Launcher'ı seç, sonra launcher'ı zorla durdur."
+        status.text = "Enable the module in LSPosed, select your launcher in its scope, then force stop the launcher."
         root.addView(status)
 
         val group = RadioGroup(this)
         val nostalgicButton = RadioButton(this)
         nostalgicButton.id = 102
-        nostalgicButton.text = "Nostalji: iOS 6 tarzı, her ikonun kendi dansı (2D)"
+        nostalgicButton.text = "Nostalgic: iOS 6 style, original animations"
         val modernButton = RadioButton(this)
         modernButton.id = 101
-        modernButton.text = "Modern: 3D dönüşler ve ters yüz olmalar"
+        modernButton.text = "Modern: 3D spins and flips"
         group.addView(nostalgicButton)
         group.addView(modernButton)
         group.check(if (Dispatch.savedMode(this) == Proto.MODE_MODERN) 101 else 102)
@@ -61,9 +65,9 @@ class MainActivity : Activity() {
         }
         root.addView(group)
 
-        root.addView(button("Ana ekrana kısayol ekle") { pinShortcut() })
-        root.addView(button("Modülü kontrol et") { check() })
-        root.addView(button("Ana ekrana dön ve başlat") { goHomeAndStart() })
+        root.addView(button("Add shortcut to home screen") { pinShortcut() })
+        root.addView(button("Check module") { check() })
+        root.addView(button("Go home and start") { goHomeAndStart() })
         setContentView(root)
 
         val prefs = getSharedPreferences("state", Context.MODE_PRIVATE)
@@ -97,11 +101,11 @@ class MainActivity : Activity() {
 
     private fun check() {
         answered = false
-        status.text = "Launcher'a soruluyor..."
+        status.text = "Asking the launcher..."
         Dispatch.ping(this)
         handler.postDelayed({
             if (!answered) {
-                status.text = "Cevap yok. LSPosed'da modül açık mı, kapsamda launcher seçili mi? Launcher'ı zorla durdurup tekrar dene."
+                status.text = "No answer. Is the module enabled in LSPosed with the launcher in scope? Force stop the launcher and try again."
             }
         }, 1500)
     }
@@ -117,7 +121,7 @@ class MainActivity : Activity() {
     private fun pinShortcut() {
         val sm = getSystemService(ShortcutManager::class.java)
         if (sm == null || !sm.isRequestPinShortcutSupported) {
-            Toast.makeText(this, "Launcher kısayol eklemeyi desteklemiyor", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Your launcher does not support pinned shortcuts", Toast.LENGTH_LONG).show()
             return
         }
         val intent = Intent(this, TriggerActivity::class.java)

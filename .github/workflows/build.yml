@@ -23,10 +23,10 @@ jobs:
         with:
           gradle-version: 8.9
 
-      - name: Derle
+      - name: Build
         run: gradle :app:assembleDebug --no-daemon --stacktrace
 
-      - name: Yukle
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: HarlemShake-apk

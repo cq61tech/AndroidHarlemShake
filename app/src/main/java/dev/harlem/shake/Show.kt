@@ -1,8 +1,10 @@
 package dev.harlem.shake
 
 import android.app.Activity
+import android.app.WallpaperManager
 import android.content.Context
 import android.graphics.Color
+import android.graphics.drawable.Drawable
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
@@ -14,8 +16,8 @@ import android.view.Choreographer
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.ImageView
 import kotlin.math.abs
-import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
@@ -25,15 +27,13 @@ import kotlin.random.Random
 private const val TAU = 6.2831855f
 private const val PI_F = 3.1415927f
 
+private val keyTimes = floatArrayOf(0f, 0.1f, 0.3f, 0.4f, 0.5f, 0.7f, 0.8f, 1f)
+private val keyXs = floatArrayOf(0f, 1f, -1f, 0f, 0f, 0f, 0f, 0f)
+private val keyYs = floatArrayOf(0f, 0f, 0f, 0f, 1f, -1f, 0f, 0f)
+
 private fun beatFreq(r: Random): Float {
     val f = floatArrayOf(1.15f, 2.3f, 3.45f, 4.6f)
     return f[r.nextInt(f.size)]
-}
-
-private fun locX(v: View): Int {
-    val a = IntArray(2)
-    v.getLocationOnScreen(a)
-    return a[0]
 }
 
 private fun smooth(x: Float): Float {
@@ -41,9 +41,25 @@ private fun smooth(x: Float): Float {
     return c * c * (3f - 2f * c)
 }
 
-private fun tri(u: Float): Float {
-    val f = u - floor(u)
-    return 1f - abs(2f * f - 1f)
+private fun easeOut(x: Float): Float {
+    val c = min(1f, max(0f, x))
+    return 1f - (1f - c) * (1f - c)
+}
+
+private class Style(val kind: Int, val seed: Float)
+
+private class Pose {
+    var dx = 0f
+    var dy = 0f
+    var rot = 0f
+    var scale = 1f
+
+    fun reset() {
+        dx = 0f
+        dy = 0f
+        rot = 0f
+        scale = 1f
+    }
 }
 
 class Show(
@@ -55,7 +71,7 @@ class Show(
     var active = false
         private set
 
-    private class Dancer(val view: View, r: Random, sw: Int) {
+    private class Dancer(val view: View, r: Random) {
         val baseX = view.translationX
         val baseY = view.translationY
         val baseRot = view.rotation
@@ -70,7 +86,6 @@ class Show(
         val arot = 25f + r.nextFloat() * 70f
         val asc = 0.25f + r.nextFloat() * 0.55f
         val flip = if (r.nextFloat() < 0.4f) 30f + r.nextFloat() * 50f else 0f
-        val f = beatFreq(r)
         val fx = beatFreq(r)
         val fy = beatFreq(r)
         val fr = beatFreq(r)
@@ -79,21 +94,21 @@ class Show(
         val py = r.nextFloat() * TAU
         val pr = r.nextFloat() * TAU
         val ps = r.nextFloat() * TAU
-        val dir = if (r.nextBoolean()) 1f else -1f
-        val sp = 0.5f + r.nextFloat()
-        val amp = (0.9f + r.nextFloat() * 1.6f) * h
-        val gapLeft = max(0, locX(view)).toFloat()
-        val gapRight = max(0f, sw - locX(view) - w)
-        var type = 0
+        var styleA: Style? = null
+        var styleB: Style? = null
     }
 
     private val decor = activity.window.decorView as ViewGroup
     private val handler = Handler(Looper.getMainLooper())
     private val random = Random(SystemClock.uptimeMillis())
+    private val density = activity.resources.displayMetrics.density
+    private val pose = Pose()
     private val clipState = LinkedHashMap<ViewGroup, BooleanArray>()
     private var player: MediaPlayer? = null
     private var focus: AudioFocusRequest? = null
     private var overlay: View? = null
+    private var wallpaper: Drawable? = null
+    private var replica: Dancer? = null
     private var dancers = ArrayList<Dancer>()
     private var solo: Dancer? = null
     private var dropped = false
@@ -120,8 +135,19 @@ class Show(
         val pool = if (apps.isNotEmpty()) apps else list
         if (pool.isNotEmpty()) {
             val chosen = pool[random.nextInt(pool.size)]
-            solo = Dancer(chosen, random, decor.width)
+            val d = Dancer(chosen, random)
+            if (nostalgic) {
+                d.styleB = Style(2, random.nextFloat())
+            }
+            solo = d
             unclip(chosen)
+        }
+        if (nostalgic) {
+            wallpaper = try {
+                WallpaperManager.getInstance(activity).drawable
+            } catch (t: Throwable) {
+                null
+            }
         }
         addOverlay()
         startAudio()
@@ -150,8 +176,12 @@ class Show(
         val all = ArrayList<Dancer>(dancers)
         val s = solo
         if (s != null && !all.contains(s)) all.add(s)
+        val rep = replica
+        if (rep != null) all.add(rep)
         for (d in all) settle(d)
-        overlay?.animate()?.alpha(0f)?.setDuration(300)?.start()
+        if (replica == null) {
+            overlay?.animate()?.alpha(0f)?.setDuration(300)?.start()
+        }
         handler.postDelayed({ cleanup() }, 350)
         onEnd()
     }
@@ -245,21 +275,36 @@ class Show(
         if (pos < Proto.DROP_MS) {
             val d = solo
             if (d != null) {
-                if (nostalgic) applySoloNostalgic(d, pos / 1000f) else applySolo(d, pos / 1000f)
+                if (nostalgic) {
+                    applyStyles(d, pos / 1000f, density * Proto.SOLO_AMP)
+                } else {
+                    applySolo(d, pos / 1000f)
+                }
             }
         } else {
             if (!dropped) beginCrazy()
             val t = (pos - Proto.DROP_MS) / 1000f
-            val ramp = min(1f, t / 0.15f)
             if (nostalgic) {
-                for (d in dancers) applyNostalgic(d, t, ramp)
-                val phase = (t % 0.87f) / 0.87f
-                overlay?.alpha = if (phase < 0.45f) 0.75f else 0.1f
+                for (d in dancers) applyStyles(d, t, density)
+                val rep = replica
+                if (rep != null) applyStyles(rep, t, density)
+                if (rep == null) {
+                    val phase = (t % 0.87f) / 0.87f
+                    overlay?.alpha = if (phase < 0.45f) 0.75f else 0.1f
+                }
             } else {
+                val ramp = min(1f, t / 0.15f)
                 for (d in dancers) applyCrazy(d, t, ramp)
                 overlay?.alpha = min(1f, t / 0.5f) * 0.55f
             }
         }
+    }
+
+    private fun assignStyles(d: Dancer) {
+        val a = random.nextInt(3)
+        val b = random.nextInt(3)
+        d.styleB = Style(b, random.nextFloat())
+        d.styleA = if (a == b) null else Style(a, random.nextFloat())
     }
 
     private fun beginCrazy() {
@@ -269,102 +314,95 @@ class Show(
         val fresh = Targets.find(activity)
         val list = ArrayList<Dancer>()
         for (v in fresh) {
-            val d = if (old != null && old.view === v) old else Dancer(v, random, decor.width)
+            val d = if (old != null && old.view === v) old else Dancer(v, random)
+            if (nostalgic) assignStyles(d)
             list.add(d)
             unclip(v)
         }
-        if (nostalgic) {
-            val head = listOf(0, 1, 2, 3, 4).shuffled(random)
-            val tail = listOf(5, 6, 7, 8, 9, 10).shuffled(random)
-            val order = head + tail
-            for (i in list.indices) {
-                list[i].type = order[i % order.size]
-            }
-        }
         dancers = list
-    }
-
-    private fun applySoloNostalgic(d: Dancer, t: Float) {
-        val u = t % 2f
-        var dx = 0f
-        var dy = 0f
-        if (u < 0.6f) {
-            dy = -sin(PI_F * u / 0.6f) * 0.4f * d.h
-        } else if (u < 1.3f) {
-            dx = sin(PI_F * (u - 0.6f) / 0.7f) * 0.5f * d.w
-        } else {
-            dx = -sin(PI_F * (u - 1.3f) / 0.7f) * 0.5f * d.w
+        val wp = wallpaper
+        if (nostalgic && wp != null) {
+            val iv = ImageView(activity)
+            iv.scaleType = ImageView.ScaleType.CENTER_CROP
+            iv.setImageDrawable(wp)
+            val lp = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            decor.addView(iv, 1, lp)
+            overlay?.alpha = 1f
+            val rep = Dancer(iv, random)
+            assignStyles(rep)
+            replica = rep
         }
-        val v = d.view
-        v.translationX = d.baseX + dx
-        v.translationY = d.baseY + dy
     }
 
-    private fun applyNostalgic(d: Dancer, t: Float, ramp: Float) {
-        var dx = 0f
-        var dy = 0f
-        var rot = 0f
-        var sx = 1f
-        var sy = 1f
-        when (d.type) {
+    private fun applyStyles(d: Dancer, t: Float, unit: Float) {
+        pose.reset()
+        val a = d.styleA
+        if (a != null) evalStyle(a, t, unit)
+        val b = d.styleB
+        if (b != null) evalStyle(b, t, unit)
+        val v = d.view
+        v.translationX = d.baseX + pose.dx
+        v.translationY = d.baseY + pose.dy
+        v.rotation = d.baseRot + pose.rot
+        v.scaleX = d.baseSx * pose.scale
+        v.scaleY = d.baseSy * pose.scale
+    }
+
+    private fun evalStyle(style: Style, t: Float, unit: Float) {
+        val seed = style.seed
+        val p = pose
+        when (style.kind) {
             0 -> {
-                rot = d.dir * 360f * d.sp * t
+                val rd = 1f + seed
+                val pd = 0.5f + seed
+                val total = rd + pd
+                val idx = floor(t / total).toInt()
+                var u = t - idx * total
+                if (idx % 2 == 1) u = total - u
+                if (u < rd) {
+                    val frac = u / rd
+                    p.rot = if (seed < 0.5f) 360f * (1f - frac) else 360f * frac
+                    p.scale = 1f
+                } else {
+                    p.rot = 0f
+                    p.scale = 1f + 0.2f * ((u - rd) / pd)
+                }
             }
             1 -> {
-                val s = 0.25f + 2.95f * (0.5f + 0.5f * sin(TAU * d.sp * 0.8f * t + d.px))
-                sx = s
-                sy = s
-            }
-            2 -> {
-                dy = -d.amp * abs(sin(PI_F * d.f * t + d.px))
-            }
-            3 -> {
-                val edge = if (d.dir > 0f) d.gapRight else d.gapLeft
-                val dist = edge + d.w * 1.3f
-                val k = smooth(tri(t * 0.45f * d.sp + d.px / TAU))
-                dx = d.dir * dist * k
-                rot = d.dir * 14f * k
-            }
-            4 -> {
-                val om = TAU * 0.45f * d.sp
-                val radius = d.ax * 1.3f
-                dx = radius * sin(om * t + d.px)
-                dy = radius * 0.6f * sin(2f * om * t + d.px)
-                rot = 18f * cos(om * t + d.px)
-            }
-            5 -> {
-                dx = 0.12f * d.w * sin(TAU * 11f * t + d.px)
-                dy = 0.12f * d.h * sin(TAU * 13f * t + d.py)
-                rot = 12f * sin(TAU * 9f * t + d.pr)
-            }
-            6 -> {
-                val a = TAU * d.f * 0.5f * t + d.px
-                rot = 40f * sin(a)
-                dx = 0.25f * d.w * sin(a)
-            }
-            7 -> {
-                val a = TAU * d.f * 0.5f * t + d.px
-                sx = 1f + 0.8f * sin(a)
-                sy = 1f - 0.5f * sin(a)
-            }
-            8 -> {
-                dy = d.ay * 0.9f * sin(TAU * d.sp * 0.4f * t + d.py)
-            }
-            9 -> {
-                dx = d.ax * 0.8f * sin(TAU * d.sp * 0.5f * t + d.px)
-                rot = dx / (d.w * 0.5f) * 57.29578f
+                val per = 1f + seed
+                val ph = (t % per) / per
+                val sign = if (seed < 0.5f) 1f else -1f
+                val s2 = 1f + seed * sign
+                val s3 = 1f - seed * sign
+                val s = if (ph < 0.4f) {
+                    1f + (s2 - 1f) * easeOut(ph / 0.4f)
+                } else if (ph < 0.7f) {
+                    s2 + (s3 - s2) * smooth((ph - 0.4f) / 0.3f)
+                } else {
+                    s3 + (1f - s3) * smooth((ph - 0.7f) / 0.3f)
+                }
+                p.dx = 0f
+                p.dy = 0f
+                p.rot = 0f
+                p.scale = max(0.02f, s)
             }
             else -> {
-                dx = d.ax * (tri(t * 0.35f * d.sp + d.px / TAU) * 2f - 1f)
-                dy = d.ay * (tri(t * 0.27f * d.sp + d.py / TAU) * 2f - 1f)
+                val per = 1f + seed
+                if (t <= per * 10f) {
+                    val ph = (t % per) / per
+                    val sign = if (seed < 0.5f) 1f else -1f
+                    val o = (10f + 20f * seed) * sign * unit
+                    var i = 0
+                    while (i < keyTimes.size - 2 && ph >= keyTimes[i + 1]) i++
+                    val k = smooth((ph - keyTimes[i]) / (keyTimes[i + 1] - keyTimes[i]))
+                    p.dx = (keyXs[i] + (keyXs[i + 1] - keyXs[i]) * k) * o
+                    p.dy = (keyYs[i] + (keyYs[i + 1] - keyYs[i]) * k) * o
+                }
             }
         }
-        val v = d.view
-        v.translationX = d.baseX + ramp * dx
-        v.translationY = d.baseY + ramp * dy
-        v.rotation = d.baseRot + ramp * rot
-        v.scaleX = d.baseSx * (1f + ramp * (sx - 1f))
-        v.scaleY = d.baseSy * (1f + ramp * (sy - 1f))
     }
 
     private fun applySolo(d: Dancer, t: Float) {
@@ -441,6 +479,9 @@ class Show(
     }
 
     private fun cleanup() {
+        val rep = replica
+        if (rep != null) decor.removeView(rep.view)
+        replica = null
         val o = overlay
         if (o != null) decor.removeView(o)
         overlay = null

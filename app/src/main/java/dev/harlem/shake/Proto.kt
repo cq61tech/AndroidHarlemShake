@@ -12,5 +12,6 @@ object Proto {
     const val MODE_NOSTALGIC = 1
     const val DROP_MS = 15600L
     const val END_MS = 30000L
+    const val SOLO_AMP = 1f
     val LAUNCHERS = arrayOf("com.google.android.apps.nexuslauncher", "com.android.launcher3")
 }

@@ -1,4 +1,4 @@
 <resources>
     <string name="app_name">Harlem Shake</string>
-    <string name="xposed_description">Launcher simgelerini Harlem Shake ile oynatir</string>
+    <string name="xposed_description">Makes launcher icons do the Harlem Shake</string>
 </resources>
