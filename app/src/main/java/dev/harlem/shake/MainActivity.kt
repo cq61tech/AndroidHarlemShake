@@ -29,12 +29,19 @@ class MainActivity : Activity() {
             answered = true
             val n = intent.getIntExtra(Proto.EXTRA_ICONS, -1)
             val who = intent.getStringExtra(Proto.EXTRA_PACKAGE) ?: ""
-            val detail = if (n > 0) {
-                "Found $n icons on the home screen."
-            } else {
-                "Open the home screen and check again to count icons."
+            val build = intent.getIntExtra(Proto.EXTRA_BUILD, -1)
+            val last = intent.getIntExtra(Proto.EXTRA_LAST_MODE, -1)
+            val lastName = when (last) {
+                Proto.MODE_MODERN -> "modern"
+                Proto.MODE_NOSTALGIC -> "nostalgic"
+                else -> "none yet"
             }
-            status.text = "Module is active ($who). $detail"
+            val icons = if (n > 0) "$n icons visible." else "Icons are counted only while the home screen is open."
+            if (build != Proto.BUILD) {
+                status.text = "The launcher is running an old copy of the module (build $build, app build ${Proto.BUILD}). Reboot the phone, then check again."
+            } else {
+                status.text = "Module is active in $who. Build $build. Last mode received: $lastName. $icons"
+            }
         }
     }
 

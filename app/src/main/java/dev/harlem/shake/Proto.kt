@@ -8,6 +8,9 @@ object Proto {
     const val EXTRA_ICONS = "icons"
     const val EXTRA_PACKAGE = "pkg"
     const val EXTRA_MODE = "mode"
+    const val EXTRA_BUILD = "build"
+    const val EXTRA_LAST_MODE = "lastMode"
+    const val BUILD = 4
     const val MODE_MODERN = 0
     const val MODE_NOSTALGIC = 1
     const val DROP_MS = 15600L

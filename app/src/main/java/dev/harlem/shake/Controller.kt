@@ -12,6 +12,7 @@ object Controller {
     private var registered = false
     private var activityRef: WeakReference<Activity>? = null
     private var show: Show? = null
+    private var lastMode = -1
 
     fun attach(activity: Activity) {
         if (!looksLikeLauncher(activity)) return
@@ -64,6 +65,8 @@ object Controller {
                 reply.setPackage(Proto.APP_PACKAGE)
                 reply.putExtra(Proto.EXTRA_ICONS, count)
                 reply.putExtra(Proto.EXTRA_PACKAGE, context.packageName)
+                reply.putExtra(Proto.EXTRA_BUILD, Proto.BUILD)
+                reply.putExtra(Proto.EXTRA_LAST_MODE, lastMode)
                 context.sendBroadcast(reply)
             }
             Proto.ACTION_TOGGLE -> {
@@ -72,7 +75,9 @@ object Controller {
                     running.stop()
                     show = null
                 } else if (alive && activity != null) {
-                    val nostalgic = intent.getIntExtra(Proto.EXTRA_MODE, Proto.MODE_NOSTALGIC) == Proto.MODE_NOSTALGIC
+                    val mode = intent.getIntExtra(Proto.EXTRA_MODE, Proto.MODE_NOSTALGIC)
+                    lastMode = mode
+                    val nostalgic = mode == Proto.MODE_NOSTALGIC
                     val created = Show(activity, nostalgic) { show = null }
                     show = created
                     created.start()
