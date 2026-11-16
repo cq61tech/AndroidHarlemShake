@@ -1,7 +1,6 @@
 package dev.harlem.shake
 
 import android.app.Activity
-import android.app.WallpaperManager
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.Drawable
@@ -143,11 +142,7 @@ class Show(
             unclip(chosen)
         }
         if (nostalgic) {
-            wallpaper = try {
-                WallpaperManager.getInstance(activity).drawable
-            } catch (t: Throwable) {
-                null
-            }
+            wallpaper = Backdrop.load(activity).drawable
         }
         addOverlay()
         startAudio()
@@ -287,11 +282,7 @@ class Show(
             if (nostalgic) {
                 for (d in dancers) applyStyles(d, t, density)
                 val rep = replica
-                if (rep != null) applyStyles(rep, t, density)
-                if (rep == null) {
-                    val phase = (t % 0.87f) / 0.87f
-                    overlay?.alpha = if (phase < 0.45f) 0.75f else 0.1f
-                }
+                if (rep != null) applyPanel(rep, t)
             } else {
                 val ramp = min(1f, t / 0.15f)
                 for (d in dancers) applyCrazy(d, t, ramp)
@@ -331,9 +322,7 @@ class Show(
             )
             decor.addView(iv, 1, lp)
             overlay?.alpha = 1f
-            val rep = Dancer(iv, random)
-            assignStyles(rep)
-            replica = rep
+            replica = Dancer(iv, random)
         }
     }
 
@@ -405,6 +394,25 @@ class Show(
         }
     }
 
+    private fun applyPanel(d: Dancer, t: Float) {
+        val ramp = min(1f, t / 0.2f)
+        val w = decor.width.toFloat()
+        val h = decor.height.toFloat()
+        val cycle = (t / 5f) % 1f
+        val spin = 360f * smooth(cycle * 2f)
+        val rot = 25f * sin(TAU * 0.6f * t) + spin
+        val s = 0.75f + 0.35f * sin(TAU * 0.55f * t) + 0.06f * sin(TAU * 2.3f * t)
+        val dy = -abs(sin(PI_F * 1.15f * t)) * 0.08f * h
+        val dx = 0.1f * w * sin(TAU * 0.4f * t)
+        val v = d.view
+        v.translationX = d.baseX + ramp * dx
+        v.translationY = d.baseY + ramp * dy
+        v.rotation = d.baseRot + ramp * rot
+        val sc = 1f + ramp * (s - 1f)
+        v.scaleX = d.baseSx * sc
+        v.scaleY = d.baseSy * sc
+    }
+
     private fun applySolo(d: Dancer, t: Float) {
         val hop = abs(sin(PI_F * t / 0.435f))
         val v = d.view
@@ -441,6 +449,10 @@ class Show(
     }
 
     private fun settle(d: Dancer) {
+        var delta = (d.view.rotation - d.baseRot) % 360f
+        if (delta > 180f) delta -= 360f
+        if (delta < -180f) delta += 360f
+        d.view.rotation = d.baseRot + delta
         d.view.animate()
             .translationX(d.baseX)
             .translationY(d.baseY)

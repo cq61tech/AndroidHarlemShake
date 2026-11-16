@@ -66,6 +66,7 @@ object Controller {
                 reply.putExtra(Proto.EXTRA_ICONS, count)
                 reply.putExtra(Proto.EXTRA_PACKAGE, context.packageName)
                 reply.putExtra(Proto.EXTRA_BUILD, Proto.BUILD)
+                reply.putExtra(Proto.EXTRA_WALLPAPER, Backdrop.load(context).source)
                 reply.putExtra(Proto.EXTRA_LAST_MODE, lastMode)
                 context.sendBroadcast(reply)
             }

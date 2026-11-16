@@ -31,6 +31,7 @@ class MainActivity : Activity() {
             val who = intent.getStringExtra(Proto.EXTRA_PACKAGE) ?: ""
             val build = intent.getIntExtra(Proto.EXTRA_BUILD, -1)
             val last = intent.getIntExtra(Proto.EXTRA_LAST_MODE, -1)
+            val wallpaperSource = intent.getStringExtra(Proto.EXTRA_WALLPAPER) ?: "unknown"
             val lastName = when (last) {
                 Proto.MODE_MODERN -> "modern"
                 Proto.MODE_NOSTALGIC -> "nostalgic"
@@ -40,7 +41,7 @@ class MainActivity : Activity() {
             if (build != Proto.BUILD) {
                 status.text = "The launcher is running an old copy of the module (build $build, app build ${Proto.BUILD}). Reboot the phone, then check again."
             } else {
-                status.text = "Module is active in $who. Build $build. Last mode received: $lastName. $icons"
+                status.text = "Module is active in $who. Build $build. Last mode received: $lastName. Wallpaper: $wallpaperSource. $icons"
             }
         }
     }
